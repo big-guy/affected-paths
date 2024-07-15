@@ -20,9 +20,15 @@
 package com.squareup.affected.paths.core.utils
 
 import com.squareup.tooling.models.SquareProject
+import com.sun.management.HotSpotDiagnosticMXBean
 import org.gradle.tooling.BuildAction
 import org.gradle.tooling.BuildController
 import org.gradle.tooling.model.Model
+import java.io.File
+import java.lang.management.ManagementFactory
+import java.text.SimpleDateFormat
+import java.util.*
+
 
 // Build action to grab the SquareProject on a per-project basis
 private class ProjectBuildAction(private val project: Model) : BuildAction<SquareProject?> {
@@ -68,10 +74,22 @@ internal class SquareBuildAction(
     }
 
     if (actions.isEmpty()) return emptyList()
-    return if (allowParallelConfiguration && canRunParallel) {
+    val result = if (allowParallelConfiguration && canRunParallel) {
       controller.run(actions).filterNotNull()
     } else {
       actions.mapNotNull { it.execute(controller) }
     }
+    val mxBean = ManagementFactory.newPlatformMXBeanProxy(
+      ManagementFactory.getPlatformMBeanServer(),
+      "com.sun.management:type=HotSpotDiagnostic", HotSpotDiagnosticMXBean::class.java
+    )
+    val baseDir = File(System.getProperty("heap.dir"))
+    baseDir.mkdirs()
+    val currentTime = SimpleDateFormat("yyyyMMddHHmm").format(Date())
+    val outputFile = File(baseDir, "heap-${currentTime}.hprof")
+    println("Gemerating heap dump $outputFile - start")
+    mxBean.dumpHeap(outputFile.absolutePath, true)
+    println("Gemerating heap dump $outputFile - done")
+    return result
   }
 }
